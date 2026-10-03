@@ -2,12 +2,12 @@ use ratatui::{
     layout::{Constraint, Direction, Layout},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{List, ListItem, ListState, Paragraph},
+    widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Wrap},
     Frame,
 };
 
 use super::app::App;
-use crate::models::{format_time, truncate};
+use crate::models::{format_time, format_time_relative, truncate};
 
 pub struct Theme {
     pub fg: Color,
@@ -45,7 +45,8 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Length(1), // header
-            Constraint::Min(3),    // list
+            Constraint::Min(4),    // list
+            Constraint::Length(9), // preview pane
             Constraint::Length(1), // footer
         ])
         .split(area);
@@ -96,11 +97,14 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         .highlight_symbol("▶ ");
     frame.render_stateful_widget(list, chunks[1], &mut state);
 
+    // Preview pane: full content + metadata for the selected entry.
+    frame.render_widget(build_preview(app, &theme), chunks[2]);
+
     // Footer: key bindings.
     let help = "j/k move · enter copy · y copy&quit · / search · d delete · D clear · p pin · t theme · 1-9 select · q quit";
     frame.render_widget(
         Paragraph::new(Line::from(Span::styled(help, Style::default().fg(theme.dim)))),
-        chunks[2],
+        chunks[3],
     );
 }
 
@@ -110,13 +114,15 @@ fn build_items(app: &App, theme: &Theme) -> Vec<ListItem<'static>> {
         .iter()
         .map(|e| {
             let pin = if e.pinned { "◆ " } else { "  " };
+            let time = if app.config.relative_time {
+                format_time_relative(e.updated_at)
+            } else {
+                format_time(e.updated_at)
+            };
             let line = Line::from(vec![
                 Span::styled(format!("{:>4} ", e.id), Style::default().fg(theme.dim)),
                 Span::styled(pin, Style::default().fg(theme.accent)),
-                Span::styled(
-                    format!("{}  ", format_time(e.updated_at)),
-                    Style::default().fg(theme.dim),
-                ),
+                Span::styled(format!("{time}  "), Style::default().fg(theme.dim)),
                 Span::styled(
                     format!("{}  ", truncate(&e.source, 16)),
                     Style::default().fg(theme.accent),
@@ -126,4 +132,55 @@ fn build_items(app: &App, theme: &Theme) -> Vec<ListItem<'static>> {
             ListItem::new(line)
         })
         .collect()
+}
+
+fn build_preview(app: &App, theme: &Theme) -> Paragraph<'static> {
+    let border_style = Style::default().fg(theme.dim);
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title(" preview ")
+        .border_style(border_style);
+
+    let Some(e) = app.selected_entry() else {
+        return Paragraph::new(Span::styled(
+            "(no entries)",
+            Style::default().fg(theme.dim),
+        ))
+        .block(block);
+    };
+
+    let meta = Line::from(vec![
+        Span::styled(
+            format!("#{} ", e.id),
+            Style::default().fg(theme.accent).add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(format!("{}  ", e.source), Style::default().fg(theme.accent)),
+        Span::styled(
+            format!(
+                "created {} · updated {}  ",
+                format_time(e.created_at),
+                format_time(e.updated_at)
+            ),
+            Style::default().fg(theme.dim),
+        ),
+        Span::styled(
+            if e.pinned { "◆ pinned" } else { "" },
+            Style::default().fg(theme.accent),
+        ),
+    ]);
+
+    let mut lines = vec![meta];
+    let mut added = false;
+    for line in e.content.lines() {
+        lines.push(Line::from(Span::raw(line.to_string())));
+        added = true;
+    }
+    if !added {
+        lines.push(Line::from(Span::styled(
+            "(empty)",
+            Style::default().fg(theme.dim),
+        )));
+    }
+
+    Paragraph::new(lines).wrap(Wrap { trim: false }).block(block)
 }

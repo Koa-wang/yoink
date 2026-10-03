@@ -12,6 +12,12 @@ use clap::Parser;
 use crate::models::format_time;
 
 fn main() {
+    // Behave like standard Unix tools when stdout is closed early (e.g. `| head`).
+    #[cfg(unix)]
+    unsafe {
+        libc::signal(libc::SIGPIPE, libc::SIG_DFL);
+    }
+
     let cli = cli::Cli::parse();
     if let Err(e) = run(cli) {
         eprintln!("yoinker: error: {e:#}");
@@ -55,7 +61,28 @@ fn run(cli: cli::Cli) -> Result<()> {
         Some(cli::Command::Clear) => {
             let conn = db::init(&config::db_path())?;
             let n = db::clear(&conn)?;
+            db::vacuum(&conn)?;
             println!("cleared {n} {}", if n == 1 { "entry" } else { "entries" });
+            Ok(())
+        }
+
+        Some(cli::Command::Rm { id }) => {
+            let conn = db::init(&config::db_path())?;
+            let n = db::delete(&conn, id)?;
+            if n == 0 {
+                anyhow::bail!("no entry with id {id}");
+            }
+            println!("deleted entry {id}");
+            Ok(())
+        }
+
+        Some(cli::Command::Pin { id, unpin }) => {
+            let conn = db::init(&config::db_path())?;
+            let n = db::set_pinned(&conn, id, !unpin)?;
+            if n == 0 {
+                anyhow::bail!("no entry with id {id}");
+            }
+            println!("{} entry {id}", if unpin { "unpinned" } else { "pinned" });
             Ok(())
         }
 

@@ -19,3 +19,18 @@ pub fn set_text(text: &str) -> Result<()> {
         .context("failed to write to system clipboard")?;
     Ok(())
 }
+
+/// A cheap clipboard change counter, when the platform provides one.
+///
+/// Returns `None` where no efficient counter is available, in which case the
+/// daemon falls back to comparing clipboard text on every poll.
+#[cfg(target_os = "macos")]
+pub fn change_count() -> Option<u64> {
+    use objc2_app_kit::NSPasteboard;
+    Some(NSPasteboard::generalPasteboard().changeCount() as u64)
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn change_count() -> Option<u64> {
+    None
+}

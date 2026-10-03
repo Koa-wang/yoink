@@ -55,6 +55,23 @@ pub fn format_time(ts: i64) -> String {
         .unwrap_or_else(|| ts.to_string())
 }
 
+/// Format a unix timestamp as a relative time ("3 分钟前"), falling back to
+/// the absolute date for anything older than a week.
+pub fn format_time_relative(ts: i64) -> String {
+    let diff = chrono::Utc::now().timestamp() - ts;
+    if diff < 60 {
+        "刚刚".to_string()
+    } else if diff < 3600 {
+        format!("{} 分钟前", diff / 60)
+    } else if diff < 86_400 {
+        format!("{} 小时前", diff / 3600)
+    } else if diff < 7 * 86_400 {
+        format!("{} 天前", diff / 86_400)
+    } else {
+        format_time(ts)
+    }
+}
+
 /// A small fuzzy matcher: every character of `query` must appear, in order,
 /// in `text` (case-insensitive). Returns a score (higher is better).
 pub fn fuzzy_match(query: &str, text: &str) -> Option<i64> {
@@ -95,5 +112,56 @@ pub fn fuzzy_match(query: &str, text: &str) -> Option<i64> {
         Some(score - gap_penalty * 2 - first)
     } else {
         None
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn fuzzy_match_basic() {
+        assert!(fuzzy_match("ban", "banana").is_some());
+        assert!(fuzzy_match("ban", "apple").is_none());
+        assert!(fuzzy_match("", "anything").is_some());
+        // subsequence, case-insensitive
+        assert!(fuzzy_match("hlo", "Hello World").is_some());
+        // better (earlier, consecutive) matches score higher
+        let good = fuzzy_match("ban", "banana").unwrap();
+        let bad = fuzzy_match("ban", "xx bxx axx n").unwrap();
+        assert!(good > bad);
+    }
+
+    #[test]
+    fn single_line_collapses_newlines() {
+        let e = Entry {
+            id: 1,
+            content: "line1\nline2\ttab".to_string(),
+            source: "s".to_string(),
+            created_at: 0,
+            updated_at: 0,
+            pinned: false,
+        };
+        assert_eq!(e.single_line(), "line1⏎ line2  tab");
+    }
+
+    #[test]
+    fn preview_truncates() {
+        let e = Entry {
+            id: 1,
+            content: "abcdef".to_string(),
+            source: "s".to_string(),
+            created_at: 0,
+            updated_at: 0,
+            pinned: false,
+        };
+        assert_eq!(e.preview(3), "abc…");
+        assert_eq!(e.preview(10), "abcdef");
+    }
+
+    #[test]
+    fn truncate_handles_unicode() {
+        assert_eq!(truncate("你好世界", 2), "你好…");
+        assert_eq!(truncate("hi", 5), "hi");
     }
 }

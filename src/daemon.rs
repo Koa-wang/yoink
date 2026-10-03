@@ -55,7 +55,18 @@ fn run_inner(cfg: &Config) -> Result<()> {
     let conn = db::init(&config::db_path())?;
     let regexes = cfg.ignored_regexes();
 
-    let mut last_content: Option<String> = None;
+    // Record whatever is already on the clipboard when the daemon starts,
+    // then baseline the cheap change counter (when available).
+    let mut last_content: Option<String> = match clipboard::get_text() {
+        Ok(text) => {
+            if let Some(t) = &text {
+                record(&conn, t, &regexes);
+            }
+            text
+        }
+        Err(_) => None,
+    };
+    let mut last_count = clipboard::change_count();
     let mut err_logged = false;
     let mut last_cleanup = chrono::Utc::now().timestamp();
 
@@ -68,31 +79,48 @@ fn run_inner(cfg: &Config) -> Result<()> {
             last_cleanup = now;
         }
 
-        match clipboard::get_text() {
-            Ok(Some(text)) => {
-                err_logged = false;
-                if last_content.as_deref() != Some(text.as_str()) {
-                    last_content = Some(text.clone());
-                    if !text.trim().is_empty() && !is_ignored(&text, &regexes) {
-                        let source = source_app().unwrap_or_else(|| "unknown".to_string());
-                        if let Err(e) = db::insert_or_update(&conn, &text, &source) {
-                            eprintln!("yoinker daemon: failed to record clipboard: {e}");
-                        }
+        match clipboard::change_count() {
+            // Fast path: a cheap counter tells us when the clipboard changed.
+            Some(count) => {
+                if Some(count) != last_count {
+                    last_count = Some(count);
+                    if let Ok(Some(text)) = clipboard::get_text() {
+                        err_logged = false;
+                        record(&conn, &text, &regexes);
                     }
                 }
             }
-            Ok(None) => {
-                err_logged = false;
-            }
-            Err(e) => {
-                if !err_logged {
-                    eprintln!("yoinker daemon: cannot read clipboard: {e}");
-                    err_logged = true;
+            // Fallback: compare the clipboard text on every poll.
+            None => match clipboard::get_text() {
+                Ok(Some(text)) => {
+                    err_logged = false;
+                    if last_content.as_deref() != Some(text.as_str()) {
+                        last_content = Some(text.clone());
+                        record(&conn, &text, &regexes);
+                    }
                 }
-            }
+                Ok(None) => {
+                    err_logged = false;
+                }
+                Err(e) => {
+                    if !err_logged {
+                        eprintln!("yoinker daemon: cannot read clipboard: {e}");
+                        err_logged = true;
+                    }
+                }
+            },
         }
 
         std::thread::sleep(std::time::Duration::from_millis(cfg.daemon.poll_interval_ms));
+    }
+}
+
+fn record(conn: &rusqlite::Connection, text: &str, regexes: &[regex::Regex]) {
+    if !text.trim().is_empty() && !is_ignored(text, regexes) {
+        let source = source_app().unwrap_or_else(|| "unknown".to_string());
+        if let Err(e) = db::insert_or_update(conn, text, &source) {
+            eprintln!("yoinker daemon: failed to record clipboard: {e}");
+        }
     }
 }
 
@@ -103,20 +131,9 @@ fn is_ignored(text: &str, regexes: &[regex::Regex]) -> bool {
 /// Best-effort detection of the frontmost application (the clipboard source).
 #[cfg(target_os = "macos")]
 fn source_app() -> Option<String> {
-    let out = std::process::Command::new("osascript")
-        .args([
-            "-e",
-            "tell application \"System Events\" to get name of first application process whose frontmost is true",
-        ])
-        .output()
-        .ok()?;
-    if out.status.success() {
-        let name = String::from_utf8_lossy(&out.stdout).trim().to_string();
-        if !name.is_empty() {
-            return Some(name);
-        }
-    }
-    None
+    use objc2_app_kit::NSWorkspace;
+    let app = NSWorkspace::sharedWorkspace().frontmostApplication()?;
+    app.localizedName().map(|s| s.to_string())
 }
 
 #[cfg(target_os = "linux")]

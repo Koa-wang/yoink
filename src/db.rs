@@ -17,14 +17,21 @@ CREATE TABLE IF NOT EXISTS entries (
 CREATE INDEX IF NOT EXISTS idx_entries_updated ON entries(updated_at DESC);
 ";
 
-/// Open (creating if necessary) the SQLite database.
+/// Open (creating if necessary) the SQLite database with WAL enabled.
 pub fn init(path: &Path) -> Result<Connection> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
     let conn = Connection::open(path)?;
-    conn.execute_batch(SCHEMA)?;
+    conn.pragma_update(None, "journal_mode", "WAL")?;
+    conn.pragma_update(None, "synchronous", "NORMAL")?;
+    init_schema(&conn)?;
     Ok(conn)
+}
+
+fn init_schema(conn: &Connection) -> Result<()> {
+    conn.execute_batch(SCHEMA)?;
+    Ok(())
 }
 
 /// Insert new content, or bump `updated_at` if the content already exists.
@@ -84,11 +91,16 @@ pub fn clear(conn: &Connection) -> Result<usize> {
     Ok(conn.execute("DELETE FROM entries", params![])?)
 }
 
-pub fn set_pinned(conn: &Connection, id: i64, pinned: bool) -> Result<()> {
-    conn.execute(
+pub fn set_pinned(conn: &Connection, id: i64, pinned: bool) -> Result<usize> {
+    Ok(conn.execute(
         "UPDATE entries SET pinned = ?1 WHERE id = ?2",
         params![pinned as i64, id],
-    )?;
+    )?)
+}
+
+/// Reclaim space. Call after large deletions (e.g. `clear`).
+pub fn vacuum(conn: &Connection) -> Result<()> {
+    conn.execute_batch("VACUUM;")?;
     Ok(())
 }
 
@@ -125,4 +137,110 @@ fn row_to_entry(row: &rusqlite::Row) -> rusqlite::Result<Entry> {
         updated_at: row.get(4)?,
         pinned: row.get(5)?,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn mem() -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        init_schema(&conn).unwrap();
+        conn
+    }
+
+    #[test]
+    fn insert_updates_timestamp_instead_of_duplicating() {
+        let conn = mem();
+        insert_or_update(&conn, "hello", "app").unwrap();
+        let first = list(&conn, 10).unwrap();
+        assert_eq!(first.len(), 1);
+        let id = first[0].id;
+        let ts = first[0].updated_at;
+
+        insert_or_update(&conn, "hello", "app2").unwrap();
+        let second = list(&conn, 10).unwrap();
+        assert_eq!(second.len(), 1);
+        assert_eq!(second[0].id, id);
+        assert!(second[0].updated_at >= ts);
+    }
+
+    #[test]
+    fn cleanup_removes_expired_but_keeps_pinned() {
+        let conn = mem();
+        let mut cfg = Config::default();
+        cfg.history_days = 1;
+
+        conn.execute(
+            "INSERT INTO entries (content, source, created_at, updated_at, pinned)
+             VALUES ('old', 's', 100, 100, 0)",
+            params![],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO entries (content, source, created_at, updated_at, pinned)
+             VALUES ('old-pinned', 's', 100, 100, 1)",
+            params![],
+        )
+        .unwrap();
+        let now = chrono::Utc::now().timestamp();
+        conn.execute(
+            "INSERT INTO entries (content, source, created_at, updated_at, pinned)
+             VALUES ('new', 's', ?1, ?1, 0)",
+            params![now],
+        )
+        .unwrap();
+
+        cleanup(&conn, &cfg).unwrap();
+
+        let contents: Vec<String> = all(&conn).unwrap().into_iter().map(|e| e.content).collect();
+        assert!(contents.contains(&"old-pinned".to_string()));
+        assert!(contents.contains(&"new".to_string()));
+        assert!(!contents.contains(&"old".to_string()));
+    }
+
+    #[test]
+    fn cleanup_trims_to_max_entries() {
+        let conn = mem();
+        let mut cfg = Config::default();
+        cfg.max_entries = 2;
+        cfg.history_days = 3650;
+
+        let now = chrono::Utc::now().timestamp();
+        for i in 0..5 {
+            conn.execute(
+                "INSERT INTO entries (content, source, created_at, updated_at, pinned)
+                 VALUES (?1, 's', ?2, ?2, 0)",
+                params![format!("c{i}"), now - i],
+            )
+            .unwrap();
+        }
+
+        cleanup(&conn, &cfg).unwrap();
+        assert_eq!(all(&conn).unwrap().len(), 2);
+    }
+
+    #[test]
+    fn search_matches_subsequence() {
+        let conn = mem();
+        insert_or_update(&conn, "banana", "s").unwrap();
+        insert_or_update(&conn, "apple", "s").unwrap();
+
+        let hits = search(&conn, "ban", 10).unwrap();
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].content, "banana");
+    }
+
+    #[test]
+    fn delete_and_pin() {
+        let conn = mem();
+        insert_or_update(&conn, "x", "s").unwrap();
+        let id = list(&conn, 10).unwrap()[0].id;
+
+        set_pinned(&conn, id, true).unwrap();
+        assert!(list(&conn, 10).unwrap()[0].pinned);
+
+        delete(&conn, id).unwrap();
+        assert!(list(&conn, 10).unwrap().is_empty());
+    }
 }

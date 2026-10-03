@@ -34,6 +34,19 @@ pub enum Command {
     },
     /// Delete all history entries
     Clear,
+    /// Delete a single entry by id
+    Rm {
+        /// Entry id to delete
+        id: i64,
+    },
+    /// Pin or unpin an entry by id
+    Pin {
+        /// Entry id
+        id: i64,
+        /// Unpin instead of pin
+        #[arg(long)]
+        unpin: bool,
+    },
     /// Print clipboard history as plain text
     History {
         /// Maximum number of entries

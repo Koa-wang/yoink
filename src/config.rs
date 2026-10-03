@@ -10,6 +10,7 @@ pub struct Config {
     pub ignored_patterns: Vec<String>,
     pub theme: String,
     pub preview_length: usize,
+    pub relative_time: bool,
     pub daemon: DaemonConfig,
 }
 
@@ -27,6 +28,7 @@ impl Default for Config {
             ignored_patterns: Vec::new(),
             theme: "dark".to_string(),
             preview_length: 80,
+            relative_time: true,
             daemon: DaemonConfig::default(),
         }
     }
@@ -110,4 +112,46 @@ pub fn config_path() -> PathBuf {
 
 pub fn db_path() -> PathBuf {
     data_dir().join("yoink.db")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn default_values() {
+        let cfg = Config::default();
+        assert_eq!(cfg.max_entries, 1000);
+        assert_eq!(cfg.history_days, 30);
+        assert_eq!(cfg.theme, "dark");
+        assert_eq!(cfg.preview_length, 80);
+        assert!(cfg.relative_time);
+        assert_eq!(cfg.daemon.poll_interval_ms, 500);
+    }
+
+    #[test]
+    fn sanitize_clamps_invalid_values() {
+        let mut cfg = Config::default();
+        cfg.max_entries = 0;
+        cfg.preview_length = 0;
+        cfg.daemon.poll_interval_ms = 0;
+        cfg.history_days = -1;
+        cfg.theme = String::new();
+        cfg.sanitize();
+        assert_eq!(cfg.max_entries, 1000);
+        assert_eq!(cfg.preview_length, 80);
+        assert_eq!(cfg.daemon.poll_interval_ms, 500);
+        assert_eq!(cfg.history_days, 30);
+        assert_eq!(cfg.theme, "dark");
+    }
+
+    #[test]
+    fn toml_roundtrip() {
+        let cfg = Config::default();
+        let s = cfg.to_toml();
+        let parsed: Config = toml::from_str(&s).unwrap();
+        assert_eq!(parsed.max_entries, cfg.max_entries);
+        assert_eq!(parsed.relative_time, cfg.relative_time);
+        assert_eq!(parsed.daemon.poll_interval_ms, cfg.daemon.poll_interval_ms);
+    }
 }
