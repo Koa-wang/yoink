@@ -1,7 +1,7 @@
 use clap::{Parser, Subcommand};
 
 #[derive(Parser, Debug)]
-#[command(name = "yoink", version, about = "A terminal clipboard manager", long_about = None)]
+#[command(name = "yoinker", version, about = "A terminal clipboard manager", long_about = None)]
 pub struct Cli {
     #[command(subcommand)]
     pub command: Option<Command>,

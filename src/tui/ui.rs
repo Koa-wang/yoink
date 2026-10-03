@@ -59,7 +59,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         ));
     } else {
         spans.push(Span::styled(
-            format!(" yoink — {} items", app.filtered.len()),
+            format!(" yoinker — {} items", app.filtered.len()),
             Style::default().fg(theme.accent).add_modifier(Modifier::BOLD),
         ));
     }

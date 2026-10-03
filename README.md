@@ -1,82 +1,84 @@
 # yoink
 
-A terminal clipboard manager written in Rust. `yoink` watches the system
-clipboard in the background, keeps a searchable history in SQLite, and lets you
-quickly find and re-copy past snippets from a TUI.
+一个用 Rust 编写的终端剪贴板管理器。后台守护进程持续监听系统剪贴板，把历史记录存入 SQLite；TUI 里可以搜索、选择、一键复制历史内容。
 
-## Features
+命令名是 `yoinker`。
 
-- **Daemon** — polls the clipboard and records new text into SQLite, with
-  de-duplication (re-copying bumps the timestamp instead of duplicating),
-  ignore patterns, and automatic pruning.
-- **TUI** — fuzzy search, keyboard navigation, copy-and-exit, delete, pin,
-  clear, quick-select with `1-9`, and dark/light themes.
-- **CLI** — scriptable `get` / `set` / `search` / `history` / `clear` /
-  `config` commands.
+## 功能
 
-## Install
+- **守护进程**：轮询剪贴板，自动记录文本、来源应用、时间戳；相同内容去重（只更新时间戳）；支持忽略规则和自动清理。
+- **TUI**：模糊搜索、键盘导航、复制即退出、删除、固定、清空、`1-9` 快速选择、暗色/亮色主题。
+- **CLI**：`get` / `set` / `search` / `history` / `clear` / `config` 等脚本化命令。
+
+## 安装
 
 ```sh
 cargo build --release
-# binary at target/release/yoink
+# 二进制在 target/release/yoinker
 ```
 
-## Usage
+安装到 PATH：
 
 ```sh
-yoink                    # open the TUI (default)
-yoink tui                # same as above
-yoink daemon             # start the background watcher (daemonizes on Unix)
-yoink daemon --foreground
-yoink get                # print current clipboard to stdout
-yoink set "some text"    # write to the clipboard
-yoink search "query"     # non-interactive fuzzy search
-yoink history            # plain-text history list
-yoink clear              # delete all history
-yoink config             # show config (add --edit to open in $EDITOR)
+cargo install --path .
+# 安装到 ~/.cargo/bin/yoinker
 ```
 
-### TUI keys
+## 使用
 
-| Key | Action |
+```sh
+yoinker                    # 打开 TUI（默认）
+yoinker tui                # 同上
+yoinker daemon             # 启动后台守护进程（Unix 下会后台化）
+yoinker daemon --foreground
+yoinker get                # 输出当前剪贴板内容到 stdout
+yoinker set "some text"    # 设置剪贴板内容
+yoinker search "query"     # 非交互式模糊搜索
+yoinker history            # 以纯文本列出历史
+yoinker clear              # 清空历史
+yoinker config             # 显示配置（加 --edit 用 $EDITOR 打开）
+```
+
+### TUI 按键
+
+| 按键 | 功能 |
 | --- | --- |
-| `j` / `k` / `↑` / `↓` | move selection |
-| `g` / `G` | jump to top / bottom |
-| `Enter` | copy selected entry to clipboard |
-| `y` | copy selected entry and quit |
-| `/` | enter search mode |
-| `Esc` (search) | cancel search |
-| `Enter` (search) | accept search results |
-| `d` | delete selected entry |
-| `D` (twice) | clear all history |
-| `p` | pin / unpin selected entry |
-| `t` | toggle dark / light theme (saved to config) |
-| `1`–`9` | select one of the first 9 entries |
-| `q` / `Esc` / `Ctrl-C` / `Ctrl-D` / `Ctrl-Q` | quit |
+| `j` / `k` / `↑` / `↓` | 上下选择 |
+| `g` / `G` | 跳到顶部 / 底部 |
+| `Enter` | 复制选中项到剪贴板 |
+| `y` | 复制选中项并退出 |
+| `/` | 进入搜索模式 |
+| `Esc`（搜索中） | 取消搜索 |
+| `Enter`（搜索中） | 接受搜索结果 |
+| `d` | 删除选中项 |
+| `D`（按两次） | 清空全部历史 |
+| `p` | 固定 / 取消固定选中项 |
+| `t` | 切换暗色 / 亮色主题（自动保存） |
+| `1`–`9` | 快速选择前 9 条 |
+| `q` / `Esc` / `Ctrl-C` / `Ctrl-D` / `Ctrl-Q` | 退出 |
 
-## Data & config
+## 数据与配置
 
-- Config: `$XDG_CONFIG_HOME/yoink/config.toml`
-  (macOS `~/Library/Application Support/yoink/config.toml`)
-- Database: `$XDG_DATA_HOME/yoink/yoink.db`
-  (macOS `~/Library/Application Support/yoink/yoink.db`)
+- 配置文件：`$XDG_CONFIG_HOME/yoink/config.toml`
+  （macOS 为 `~/Library/Application Support/yoink/config.toml`）
+- 数据库：`$XDG_DATA_HOME/yoink/yoink.db`
+  （macOS 为 `~/Library/Application Support/yoink/yoink.db`）
 
 ```toml
-max_entries = 1000            # maximum history entries
-history_days = 30             # auto-delete entries older than this
-ignored_patterns = []         # regexes; matching clipboard text is ignored
-theme = "dark"                # "dark" or "light"
-preview_length = 80           # preview truncation length in the TUI
+max_entries = 1000            # 最大历史条数
+history_days = 30             # 保留天数，过期自动删除
+ignored_patterns = []         # 忽略的正则模式列表
+theme = "dark"                # "dark" 或 "light"
+preview_length = 80           # TUI 预览截断长度
 
 [daemon]
-poll_interval_ms = 500        # clipboard poll interval
+poll_interval_ms = 500        # 剪贴板轮询间隔
 ```
 
-Pinned entries are exempt from automatic cleanup.
+固定（pinned）的条目不会被自动清理。
 
-## Platform notes
+## 平台说明
 
-- macOS and Linux: `yoink daemon` detaches to the background.
-- Windows: background daemon mode is not supported; use
-  `yoink daemon --foreground`.
-- Clipboard source-app detection is best-effort (falls back to `unknown`).
+- macOS 和 Linux：`yoinker daemon` 会后台化运行。
+- Windows：不支持后台化，请用 `yoinker daemon --foreground`。
+- 剪贴板来源应用检测为尽力而为，失败时回退为 `unknown`。

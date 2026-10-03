@@ -14,7 +14,7 @@ use crate::models::format_time;
 fn main() {
     let cli = cli::Cli::parse();
     if let Err(e) = run(cli) {
-        eprintln!("yoink: error: {e:#}");
+        eprintln!("yoinker: error: {e:#}");
         std::process::exit(1);
     }
 }
@@ -38,7 +38,7 @@ fn run(cli: cli::Cli) -> Result<()> {
 
         Some(cli::Command::Set { text }) => {
             clipboard::set_text(&text)?;
-            eprintln!("yoink: clipboard set ({} chars)", text.chars().count());
+            eprintln!("yoinker: clipboard set ({} chars)", text.chars().count());
             Ok(())
         }
 

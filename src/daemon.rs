@@ -36,7 +36,7 @@ fn daemonize_me() -> Result<()> {
 
 #[cfg(not(unix))]
 fn daemonize_me() -> Result<()> {
-    eprintln!("yoink: background daemon mode is not supported on this platform; running in foreground");
+    eprintln!("yoinker: background daemon mode is not supported on this platform; running in foreground");
     Ok(())
 }
 
@@ -50,7 +50,7 @@ fn run_inner(cfg: &Config) -> Result<()> {
         .write(true)
         .open(data_dir.join("yoink.lock"))?;
     lock.try_lock_exclusive()
-        .map_err(|_| anyhow::anyhow!("another yoink daemon is already running"))?;
+        .map_err(|_| anyhow::anyhow!("another yoinker daemon is already running"))?;
 
     let conn = db::init(&config::db_path())?;
     let regexes = cfg.ignored_regexes();
@@ -63,7 +63,7 @@ fn run_inner(cfg: &Config) -> Result<()> {
         let now = chrono::Utc::now().timestamp();
         if now - last_cleanup >= 60 {
             if let Err(e) = db::cleanup(&conn, cfg) {
-                eprintln!("yoink daemon: cleanup failed: {e}");
+                eprintln!("yoinker daemon: cleanup failed: {e}");
             }
             last_cleanup = now;
         }
@@ -76,7 +76,7 @@ fn run_inner(cfg: &Config) -> Result<()> {
                     if !text.trim().is_empty() && !is_ignored(&text, &regexes) {
                         let source = source_app().unwrap_or_else(|| "unknown".to_string());
                         if let Err(e) = db::insert_or_update(&conn, &text, &source) {
-                            eprintln!("yoink daemon: failed to record clipboard: {e}");
+                            eprintln!("yoinker daemon: failed to record clipboard: {e}");
                         }
                     }
                 }
@@ -86,7 +86,7 @@ fn run_inner(cfg: &Config) -> Result<()> {
             }
             Err(e) => {
                 if !err_logged {
-                    eprintln!("yoink daemon: cannot read clipboard: {e}");
+                    eprintln!("yoinker daemon: cannot read clipboard: {e}");
                     err_logged = true;
                 }
             }

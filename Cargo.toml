@@ -3,7 +3,11 @@ name = "yoink"
 version = "0.1.0"
 edition = "2021"
 description = "A terminal clipboard manager with history, search, and a TUI"
-license = "MIT"
+autobins = false
+
+[[bin]]
+name = "yoinker"
+path = "src/main.rs"
 
 [dependencies]
 anyhow = "1.0"
