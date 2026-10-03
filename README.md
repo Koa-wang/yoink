@@ -50,6 +50,7 @@ yoink config             # show config (add --edit to open in $EDITOR)
 | `d` | delete selected entry |
 | `D` (twice) | clear all history |
 | `p` | pin / unpin selected entry |
+| `t` | toggle dark / light theme (saved to config) |
 | `1`–`9` | select one of the first 9 entries |
 | `q` / `Esc` / `Ctrl-C` / `Ctrl-D` / `Ctrl-Q` | quit |
 

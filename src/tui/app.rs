@@ -175,6 +175,20 @@ impl App {
         }
     }
 
+    pub fn toggle_theme(&mut self) {
+        let next = if self.config.theme.eq_ignore_ascii_case("light") {
+            "dark"
+        } else {
+            "light"
+        };
+        self.config.theme = next.to_string();
+        if self.config.save().is_ok() {
+            self.set_message(&format!("theme: {next}"));
+        } else {
+            self.set_message("failed to save theme");
+        }
+    }
+
     pub fn set_message(&mut self, msg: &str) {
         self.message = Some(msg.to_string());
     }

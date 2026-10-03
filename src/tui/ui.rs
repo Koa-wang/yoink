@@ -30,7 +30,7 @@ pub fn theme_for(name: &str) -> Theme {
         Theme {
             fg: Color::White,
             accent: Color::Cyan,
-            dim: Color::DarkGray,
+            dim: Color::Gray,
             highlight_bg: Color::White,
             highlight_fg: Color::Black,
         }
@@ -97,7 +97,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     frame.render_stateful_widget(list, chunks[1], &mut state);
 
     // Footer: key bindings.
-    let help = "j/k move · enter copy · y copy&quit · / search · d delete · D clear · p pin · 1-9 select · q quit";
+    let help = "j/k move · enter copy · y copy&quit · / search · d delete · D clear · p pin · t theme · 1-9 select · q quit";
     frame.render_widget(
         Paragraph::new(Line::from(Span::styled(help, Style::default().fg(theme.dim)))),
         chunks[2],

@@ -64,6 +64,7 @@ pub fn handle_key(app: &mut App, key: KeyEvent) {
         KeyCode::Char('d') => app.delete_selected(),
         KeyCode::Char('D') => app.confirm_or_clear(),
         KeyCode::Char('p') => app.toggle_pin(),
+        KeyCode::Char('t') => app.toggle_theme(),
         KeyCode::Char(c) if c.is_ascii_digit() && c != '0' => app.select_digit(c),
         _ => {}
     }
